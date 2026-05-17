@@ -1,0 +1,98 @@
+project:
+  name: UrbanRenewal Planner Agent
+  city: 上海市
+  district: 杨浦区
+  default_radius_m: 800
+  description: 面向上海市杨浦区城市更新、15分钟生活圈、老年友好和步行友好的实验性规划 Agent。
+
+paths:
+  processed_root: "~/urban_renewal_data/processed"
+
+  poi_dir: "~/urban_renewal_data/processed/POI data"
+  poi_path: "~/urban_renewal_data/processed/POI data/poi_yangpu_clean.parquet"
+
+  road_dir: "~/urban_renewal_data/processed/road"
+  road_nodes_path: "~/urban_renewal_data/processed/road/road_nodes_clean.parquet"
+  road_edges_path: "~/urban_renewal_data/processed/road/road_edges_clean.parquet"
+  road_graph_path: "~/urban_renewal_data/processed/road/walk_bike_network.graphml"
+
+  streetview_dir: "~/urban_renewal_data/processed/yangpu_processed"
+  streetview_metadata_path: "~/urban_renewal_data/processed/yangpu_processed/image_metadata.parquet"
+  streetview_analysis_cache_path: "~/urban_renewal_data/processed/yangpu_processed/image_analysis_cache.parquet"
+
+  policy_raw_dir: "~/urban_renewal_data/document"
+  policy_processed_dir: "~/urban_renewal_data/processed/policy"
+  policy_chunks_path: "~/urban_renewal_data/processed/policy/policy_chunks.jsonl"
+  policy_documents_path: "~/urban_renewal_data/processed/policy/policy_documents.jsonl"
+
+  vector_db_root: "~/urban_renewal_data/vector_db"
+  policy_vector_db_dir: "~/urban_renewal_data/vector_db/policy_chroma"
+
+rag:
+  collection_name: yangpu_policy_rag
+  embedding_model: text-embedding-v4
+  chunk_size: 900
+  chunk_overlap: 150
+  top_k: 8
+
+analysis:
+  default_radius_m: 800
+  walk_speed_kmh: 4.8
+  bike_speed_kmh: 12.0
+  default_streetview_limit: 8
+
+scenarios:
+  elderly_friendly:
+    poi_categories:
+      - 医疗
+      - 药店
+      - 养老服务
+      - 公交站
+      - 地铁站
+      - 菜场
+      - 超市便利
+      - 公园绿地
+      - 公厕
+      - 社区服务设施
+    policy_keywords:
+      - 老年友好
+      - 适老化
+      - 无障碍
+      - 步行可达
+      - 社区生活圈
+
+  life_circle:
+    poi_categories:
+      - 医疗
+      - 教育
+      - 菜场
+      - 超市便利
+      - 公园绿地
+      - 公厕
+      - 文体设施
+      - 文化设施
+      - 社区服务设施
+      - 公交站
+      - 地铁站
+    policy_keywords:
+      - 15分钟生活圈
+      - 社区生活圈
+      - 公共服务设施
+      - 完整社区
+      - 步行可达
+
+  walkability:
+    poi_categories:
+      - 公交站
+      - 地铁站
+      - 公园绿地
+      - 公共空间
+      - 菜场
+      - 医疗
+      - 社区服务设施
+    policy_keywords:
+      - 步行友好
+      - 慢行交通
+      - 街道设计
+      - 过街安全
+      - 人行空间
