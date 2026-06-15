@@ -1,5 +1,5 @@
 """
-UrbanRenewal Planner Agent 主入口。
+UrbanRenewal Planner 自主 Agent 主入口。
 
 用法：
     python main.py                          # 交互模式
@@ -17,19 +17,20 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 
-from src.urbanrenewal.agent.planner import run
-from src.urbanrenewal.config import cfg
+from src.urbanrenewal.agent.autonomous import run_autonomous  # noqa: E402
+from src.urbanrenewal.config import cfg  # noqa: E402
 
 
 def main() -> None:
-    print(f"UrbanRenewal Planner Agent — {cfg.city}{cfg.district}")
+    print(f"UrbanRenewal Planner Autonomous Agent — {cfg.city}{cfg.district}")
     print("输入问题开始分析，输入 'q' 退出\n")
+    thread_id = "main-cli"
 
     if len(sys.argv) > 1:
         question = " ".join(sys.argv[1:])
         print(f"问题：{question}\n")
-        answer = run(question)
-        print(answer)
+        result = run_autonomous(question, thread_id=thread_id)
+        print(result.answer)
         return
 
     while True:
@@ -41,8 +42,8 @@ def main() -> None:
         if question.lower() in ("q", "quit", "exit", ""):
             break
         print()
-        answer = run(question)
-        print(answer)
+        result = run_autonomous(question, thread_id=thread_id)
+        print(result.answer)
         print()
 
 

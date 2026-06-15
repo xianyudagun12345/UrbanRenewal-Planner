@@ -13,6 +13,7 @@ __pypackages__/
 
 # 开发工具缓存
 .ruff_cache/
+.uv-cache/
 .pytest_cache/
 .mypy_cache/
 .coverage
@@ -33,6 +34,7 @@ build/
 # IDE 和编辑器
 .vscode/
 .idea/
+*.code-workspace
 *.swp
 *.swo
 *.sublime-*
@@ -58,12 +60,18 @@ Thumbs.db
 ._*
 
 # Jupyter Notebook
+notebooks/
 .ipynb_checkpoints/
 notebooks/.ipynb_checkpoints/
 **/.ipynb_checkpoints/
 
 # Claude Code 本地配置
 .claude/
+
+# 说明类 Markdown 文档不上传，仅保留项目 README
+*.md
+!README.md
+markdown/
 
 # 项目特定配置示例（推荐把真实 project.yaml 改成 example）
 project.yaml

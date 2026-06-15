@@ -1,287 +1,313 @@
-# UrbanRenewal Planner Agent
+# UrbanRenewal Planner Autonomous Agent
 
-> 面向上海市杨浦区城市更新的多模态规划诊断与建议生成 Agent
+> 面向上海市杨浦区城市更新场景的自主规划 AI Agent。它可以理解用户问题、主动澄清缺失信息、自主选择工具、检索空间与政策证据，并生成可解释的规划诊断和更新建议。
 
 [![Python](https://img.shields.io/badge/Python-3.12%2B-blue)](https://www.python.org/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-1.2.0-green)](https://github.com/langchain-ai/langgraph)
-[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-
----
+[![FastAPI](https://img.shields.io/badge/FastAPI-enabled-009688)](https://fastapi.tiangolo.com/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-enabled-ff4b4b)](https://streamlit.io/)
 
 ## 项目简介
 
-本项目是一个实验性 AI Agent，专为上海市杨浦区城市更新与社区规划场景设计。
+UrbanRenewal Planner 是一个城市更新垂直领域 AI Agent。当前版本聚焦上海市杨浦区，面向社区更新、15 分钟生活圈、老年友好、步行环境和政策依据检索等场景。
 
-Agent 的核心能力不是回答通用城市规划知识，而是**针对用户提出的具体空间问题，自动完成地点解析、空间数据检索、政策文献召回、问题诊断和规划建议生成**。
+它不是固定流程问答机器人，而是一个自主 Agent：模型会根据用户问题判断下一步需要什么信息，并选择合适工具完成任务。例如用户只说“那附近有没有养老设施？”时，Agent 可以通过会话记忆理解“那附近”指上一轮讨论的地点。
 
-典型问题示例：
+典型问题：
 
-- *请分析鞍山新村周边 800 米的老年友好问题*
-- *控江路和本溪路路口有哪些步行环境问题？*
-- *杨浦区某小区周边 15 分钟生活圈设施是否完善？*
-- *从街景来看，四平路这个街段有什么人行环境问题？*
+- 请分析鞍山新村周边 800 米的老年友好问题
+- 控江路和本溪路路口有哪些步行环境问题？
+- 杨浦区平凉路社区 15 分钟生活圈设施是否完善？
+- 从街景看，四平路这段人行环境有什么问题？
+- 刚才那个地方附近有没有适合老人休息的空间？
 
-**当前版本仅支持上海市杨浦区范围内的问题。**
+当前数据范围：**上海市杨浦区**。
 
----
+## 核心能力
 
-## 功能特性
+- **自主任务规划**：基于 LangGraph ReAct/tool-calling loop，自主决定是否需要地理编码、POI、路网、街景或政策 RAG。
+- **多轮对话记忆**：通过 `thread_id` 和 LangGraph checkpointer 维持会话上下文，支持地点继承和连续追问。
+- **澄清机制**：地点缺失、地点模糊、问题过宽或超出数据范围时，优先向用户追问或说明限制。
+- **统一工具注册表**：`src/urbanrenewal/tools/registry.py` 将专业工具包装为 LLM 可调用工具，并统一返回 `ok/data/summary/error/source/cost_hint`。
+- **地理编码**：调用高德地图 API，将地名解析为坐标，并完成 GCJ-02 到 WGS84 转换。
+- **POI 与设施缺口诊断**：基于杨浦区 POI 数据进行 buffer 查询，并按老年友好、生活圈、步行环境等场景诊断设施短板。
+- **路网分析**：基于 NetworkX/OSMnx 路网数据计算步行等时圈、主要路口和可达性。
+- **街景多模态分析**：按需调用 Qwen-VL 分析街景图像，使用本地缓存避免重复分析。
+- **政策 RAG**：基于 ChromaDB 和 DashScope embedding 检索政策 PDF 片段，为建议提供依据。
+- **产品入口**：支持 CLI、Streamlit UI 和 FastAPI API。
 
-- **自然语言意图解析**：LLM 自动识别地名、分析场景（老年友好 / 15 分钟生活圈 / 步行环境 / 通用）、分析半径
-- **地理编码**：调用高德地图 API，支持小区名、路口、医院等各类地名，自动将 GCJ-02 坐标转换为 WGS84
-- **POI 空间查询**：35,120 条杨浦区 POI，圆形 buffer 查询 + 场景设施缺口诊断
-- **路网分析**：OSMnx 步行路网，支持等时圈（步行 5/10/15 分钟）、最短路径、路口密度分析
-- **街景多模态分析**：按需调用 Qwen-VL 分析 2,746 张杨浦区街景图片，结果本地缓存避免重复 API 调用
-- **政策 RAG 检索**：16 份城市更新政策 PDF 构建的 ChromaDB 向量库，语义检索相关文件段落
-- **结构化建议生成**：综合以上数据，输出带优先级、具体空间位置和政策依据的规划建议
+## 当前架构
 
----
-
-## 技术架构
-
-```
+```text
 用户问题
-    │
-    ▼
-parse_intent ──► geocode ──► query_spatial ──────────────────┐
-                              (POI + 路网)                    │
-                                  │                           │
-                          need_streetview?                    │
-                          ├── Yes ──► query_streetview ───►   │
-                          └── No ──────────────────────────►  │
-                                                              ▼
-                                                       query_policy
-                                                       (政策 RAG)
-                                                              │
-                                                              ▼
-                                                          generate
-                                                       (LLM 生成建议)
+  │
+  ├── CLI: main.py
+  ├── Web UI: app.py
+  └── API: src/urbanrenewal/api/main.py
+      │
+      ▼
+Autonomous Agent
+src/urbanrenewal/agent/autonomous.py
+      │
+      ▼
+ReAct / Tool Calling Loop
+      │
+      ├── geocode_tool
+      ├── poi_query_tool
+      ├── facility_gap_tool
+      ├── isochrone_tool
+      ├── intersection_tool
+      ├── streetview_tool
+      ├── policy_rag_tool
+      └── report_generation_tool
+      │
+      ▼
+结构化 Markdown 诊断与规划建议
 ```
 
-| 层次 | 技术选型 |
-|---|---|
-| Agent 框架 | LangGraph 1.2（有状态工作流） |
-| LLM / VL 模型 | 阿里云 Qwen（DashScope OpenAI 兼容接口） |
-| Embedding | DashScope text-embedding-v4 |
-| 向量数据库 | ChromaDB（本地持久化，cosine 距离） |
-| 空间分析 | GeoPandas + Shapely + OSMnx + NetworkX |
-| 地理编码 | 高德地图 REST API v3 |
-| 配置管理 | YAML + python-dotenv |
+## 技术栈
 
----
+| 层次 | 技术 |
+|---|---|
+| Agent 编排 | LangGraph ReAct agent |
+| LLM / VL | 阿里云 DashScope OpenAI-compatible Qwen / Qwen-VL |
+| 工具封装 | LangChain tools + Pydantic schema |
+| 向量检索 | ChromaDB + text-embedding-v4 |
+| 空间分析 | GeoPandas + Shapely + NetworkX + OSMnx |
+| 地理编码 | 高德地图 REST API |
+| Web UI | Streamlit |
+| API | FastAPI |
+| 配置 | YAML + `.env` |
 
 ## 项目结构
 
-```
+```text
 UrbanRenewal-Planner/
+├── app.py                              # Streamlit 自主 Agent 对话界面
+├── main.py                             # CLI 主入口，默认调用自主 Agent
+├── config/
+│   └── project.yaml                    # 本地数据路径、RAG 参数、场景配置
 ├── src/
 │   └── urbanrenewal/
-│       ├── config/
-│       │   └── settings.py          # 统一配置单例（读取 YAML + .env）
 │       ├── agent/
-│       │   └── planner.py           # LangGraph Agent 主工作流
+│       │   ├── autonomous.py           # 自主 Agent 主实现
+│       │   ├── llm.py                  # 共享 LLM 工厂
+│       │   └── planner.py              # 旧固定 workflow，后续可移除
+│       ├── api/
+│       │   ├── main.py                 # FastAPI 服务
+│       │   └── schemas.py              # API 请求/响应模型
+│       ├── config/
+│       │   └── settings.py             # 配置读取
 │       ├── rag/
-│       │   └── build_policy_rag.py  # 政策 PDF → ChromaDB 构建
+│       │   └── build_policy_rag.py     # 政策 PDF 向量库构建
 │       └── tools/
-│           ├── geocode.py           # 高德地理编码 + GCJ02→WGS84
-│           ├── poi_query.py         # POI 空间查询与设施缺口诊断
-│           ├── road_query.py        # 路网分析（等时圈/最短路径/路口）
-│           ├── streetview_query.py  # 街景检索 + 多模态按需分析
-│           └── policy_rag.py        # 政策 RAG 查询封装
+│           ├── registry.py             # LLM 可调用工具注册表
+│           ├── geocode.py
+│           ├── poi_query.py
+│           ├── road_query.py
+│           ├── streetview_query.py
+│           └── policy_rag.py
 ├── scripts/
-│   ├── build_rag.py                 # RAG 构建 CLI（支持 --rebuild）
-│   ├── test_rag.py                  # RAG 检索质量测试
-│   ├── test_agent.py                # Agent 端到端测试
-│   └── ocr_scanned_pdfs.py         # 扫描件 PDF OCR 补充
-├── notebooks/
-│   ├── POI.ipynb                    # POI 数据探索
-│   ├── street_road.ipynb            # 路网数据探索
-│   └── street_view.ipynb            # 街景数据探索
-├── config/
-│   └── project.yaml                 # 路径、RAG 参数、场景定义
-├── main.py                          # 交互式入口
-├── pyproject.toml
-├── .env.example
-├── app.py
+│   ├── build_rag.py
+│   ├── run_agent_smoke.py              # 自主 Agent CLI smoke test
+│   ├── test_rag.py
+│   └── ocr_scanned_pdfs.py
+└── tests/
+    └── unit/
 ```
 
----
+## 数据依赖
 
-## 数据说明
+数据文件不提交到代码仓库。请在 `config/project.yaml` 中配置本地路径。
 
-本项目依赖以下**外部数据**（不在代码仓库中，存放于 `~/urban_renewal_data/`）：
-
-| 数据 | 规模 | 路径 |
-|---|---|---|
-| 杨浦区 POI | `processed/POI data/poi_yangpu_clean.parquet` |
-| 杨浦区路网（OSMnx） | `processed/road/walk_bike_network.graphml` |
-| 街景图片 metadata | `processed/yangpu_processed/image_metadata.parquet` |
-| 街景图片原文件 | `~D:/街景~/yangpu/` |
-| 政策 PDF | `~/document/` |
-| ChromaDB 向量库 | `vector_db/policy_chroma/` |
-
----
+| 数据 | 用途 |
+|---|---|
+| `poi_yangpu_clean.parquet` | POI 查询和设施缺口诊断 |
+| `walk_bike_network.graphml` | 步行/骑行路网分析 |
+| `image_metadata.parquet` | 街景图片索引 |
+| `image_analysis_cache.parquet` | 街景多模态分析缓存 |
+| 政策 PDF | RAG 原始文档 |
+| ChromaDB policy collection | 政策语义检索 |
 
 ## 快速开始
 
-### 1. 环境准备
+### 1. 安装依赖
 
 ```bash
-# 克隆项目
-git clone <repo-url>
-cd UrbanRenewal-Planner
-
-# 安装依赖（使用 uv，推荐）
 uv sync
+```
 
-# 或使用 pip
+或：
+
+```bash
 pip install -e .
 ```
 
 ### 2. 配置环境变量
 
+复制示例文件：
+
 ```bash
 cp .env.example .env
 ```
 
-编辑 `.env`，填入以下 API Key：
+填写：
 
 ```env
-# 阿里云 DashScope（用于 LLM / Embedding / 街景分析）
 DASHSCOPE_API_KEY=your_dashscope_api_key
 DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-
-# 对话生成模型
-MODEL=qwen3.5-omni-plus
-
-# 街景图像分析模型（Qwen-VL 系列）
-VISION_MODEL=qwen3.5-omni-plus
-
-# 高德地图 API（用于地理编码）
+MODEL=qwen-plus
+VISION_MODEL=qwen-vl-plus
 AMAP_API_KEY=your_amap_api_key
 ```
 
-### 3. 构建政策 RAG 向量库
+### 3. 配置数据路径
+
+复制并修改：
 
 ```bash
-# 首次运行（增量构建）
-python scripts/build_rag.py
-
-# 强制重建（清空后重新向量化）
-python scripts/build_rag.py --rebuild
+cp project.example.yaml config/project.yaml
 ```
 
-### 4. 验证 RAG 检索质量
+根据本机数据位置修改 `paths`。
+
+### 4. 构建政策 RAG
 
 ```bash
-python scripts/test_rag.py
-# 可选：自定义查询
-python scripts/test_rag.py --query "无障碍坡道设计标准"
+uv run python scripts/build_rag.py
 ```
 
-### 5. 运行 Agent
+强制重建：
 
 ```bash
-# 交互模式
-python main.py
-
-# 单次查询
-python main.py "请分析鞍山新村周边800米的老年友好问题"
-
-# 端到端测试（含中间状态摘要）
-python scripts/test_agent.py
-python scripts/test_agent.py -q "控江路和本溪路路口有哪些步行环境问题？"
+uv run python scripts/build_rag.py --rebuild
 ```
 
----
+### 5. 运行自主 Agent
 
-## 使用示例
+CLI 交互：
+
+```bash
+uv run python main.py
+```
+
+单次查询：
+
+```bash
+uv run python main.py "请分析鞍山新村周边800米的老年友好问题"
+```
+
+查看工具调用轨迹：
+
+```bash
+uv run python scripts/run_agent_smoke.py -q "控江路和本溪路路口有哪些步行环境问题？"
+```
+
+Streamlit UI：
+
+```bash
+uv run streamlit run app.py
+```
+
+FastAPI：
+
+```bash
+uv run uvicorn src.urbanrenewal.api.main:app --reload
+```
+
+健康检查：
+
+```bash
+curl http://127.0.0.1:8000/api/v1/health
+```
+
+## Python 调用示例
 
 ```python
-from src.urbanrenewal.agent.planner import run
+from src.urbanrenewal.agent.autonomous import run_autonomous
 
-answer = run("请分析鞍山新村周边800米的老年友好问题")
-print(answer)
+result = run_autonomous(
+    "请分析鞍山新村周边800米的老年友好问题",
+    thread_id="demo-session",
+)
+
+print(result.answer)
+print(result.tool_events)
 ```
 
-输出示例（节选）：
-
-```
-### 优先级 高 | 增设嵌入式综合为老服务站
-- 问题：800m 范围内社区服务设施完全缺失，养老服务仅 1 处（距 638m）
-- 措施：在鞍山新村委附近置换底层商铺，嵌入助餐、日托、康复等功能
-- 依据：《完整居住社区建设指南》要求综合为老服务站服务半径≤500m
-
-### 优先级 中 | 改善主要步行路径无障碍连续性
-- 问题：118 个路口中大量缺少缘石坡道和盲道铺装
-- 措施：对居委至公交站、医院的必经路径优先实施无障碍改造
-- 依据：《上海市慢行交通规划设计导则》4.3.1 节无障碍系统要求
-```
-
----
-
-## 各工具模块说明
-
-### `tools/geocode.py`
-将自然语言地名解析为 WGS84 坐标。核心功能：优先返回杨浦区内结果；自动用"上海+地名"重试；GCJ-02→WGS84 坐标转换（标准偏移公式，无额外依赖）。
-
-### `tools/poi_query.py`
-圆形 buffer POI 查询。临时投影到 UTM Zone 51N（EPSG:32651）保证米制精度，`@lru_cache` 进程内只加载一次数据文件（加载 0.11s，查询 0.04s）。
-
-### `tools/road_query.py`
-路网分析工具。使用 `networkx.read_graphml` 加载（osmnx 存在版本兼容问题），numpy 向量化最近节点计算（<1ms），`nx.ego_graph` 实现等时圈。
-
-### `tools/streetview_query.py`
-街景检索与多模态分析。**按需调用**，不预先全量分析。分析结果写入本地 parquet 缓存，同一图片+场景组合只调用一次 API。
-
-### `tools/policy_rag.py`
-政策文献语义检索。支持场景关键词自动扩充（提升召回率）、多查询合并去重、`min_score` 阈值过滤，输出"依据《XXX》"格式引用段落。
-
----
-
-## 配置文件
-
-`config/project.yaml` 管理所有路径和分析参数：
-
-```yaml
-analysis:
-  default_radius_m: 800      # 默认分析半径
-  walk_speed_kmh: 4.8        # 步行速度（用于等时圈计算）
-  default_streetview_limit: 8 # 每次最多分析街景数量
-
-scenarios:
-  elderly_friendly:
-    poi_categories: [医疗, 药店, 养老服务, 公交站, ...]
-    policy_keywords: [老年友好, 适老化, 无障碍, ...]
-```
-
-增加新场景只需在 YAML 中添加对应配置，无需修改代码。
-
----
-
-## 开发
+## API 示例
 
 ```bash
-# 代码风格检查
-ruff check src/
-
-# 自动修复可修复的问题
-ruff check src/ --fix
-
-# 格式化
-black src/
+curl -X POST http://127.0.0.1:8000/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -d "{\"question\":\"请分析鞍山新村周边800米的老年友好问题\",\"session_id\":\"demo\"}"
 ```
 
----
+## 工具返回契约
+
+所有自主 Agent 工具统一返回：
+
+```json
+{
+  "ok": true,
+  "data": {},
+  "summary": "工具结果摘要",
+  "error": "",
+  "source": "数据来源",
+  "cost_hint": "low"
+}
+```
+
+这样做的目的：
+
+- 让 LLM 更稳定地理解工具结果。
+- 让 API 和前端可以复用同一份数据。
+- 让失败结果可解释，而不是直接抛异常。
+- 为后续成本控制和审计打基础。
+
+## 成本控制与安全边界
+
+当前自主 Agent 已内置基础限制：
+
+- 最大空间查询半径：`2000m`
+- 单次街景分析上限：`3` 张
+- 单次政策 RAG 查询上限：`5` 条 query
+- 单条 RAG query 返回上限：`5` 条
+- Agent 最大递归轮次：默认 `18`
+
+后续计划：
+
+- Redis checkpointer，支持跨进程会话记忆。
+- 地理编码缓存。
+- RAG embedding 缓存。
+- 街景分析预算按用户等级控制。
+- 鉴权、限流和调用审计。
+
+## 测试
+
+```bash
+uv run pytest tests/unit -q
+uv run ruff check src tests app.py main.py scripts/run_agent_smoke.py scripts/eval_task_planner.py
+```
+
+当前基础测试覆盖：
+
+- 工具注册表契约。
+- API schema。
+- API health endpoint。
 
 ## 已知限制
 
-- **地理范围**：第一阶段仅支持上海市杨浦区，不处理区外问题
-- **街景时效**：街景图片采集于 2019 年，部分街道现状可能已发生变化
-- **路网名称**：部分路段 `road_name=unknown`，来自 OSM 数据不完整
+- 当前数据范围仅覆盖上海市杨浦区。
+- 街景图片具有时间滞后，部分现状可能已变化。
+- 当前结果主要是 Markdown + 工具轨迹，地图图层和结构化 `PlanningReport` 仍在后续开发计划中。
+- 当前会话记忆使用内存 checkpointer，进程重启后会丢失。
+- 旧 `planner.py` 固定 workflow 仍保留在代码中，但不再是产品主入口。
 
----
+## 下一步开发重点
 
-## License
-
-MIT License — 详见 [LICENSE](LICENSE)
+- 定义严格的 `PlanningReport` 输出结构。
+- 从工具调用结果中提取地图图层、POI、政策证据和建议卡片。
+- Streamlit 重新接入地图展示。
+- API 流式接口返回更细粒度的工具事件。
+- Redis 记忆、缓存和成本预算系统。
