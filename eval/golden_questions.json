@@ -1,0 +1,67 @@
+[
+  {
+    "id": "elderly_anshan",
+    "question": "请分析鞍山新村周边800米的老年友好问题",
+    "expected_scenario": "elderly_friendly",
+    "expected_radius_m": 800,
+    "expected_clarification_needed": false,
+    "expected_tools": ["geocode_tool", "poi_query_tool", "facility_gap_tool", "policy_rag_tool"],
+    "expected_place_contains": ["鞍山新村"]
+  },
+  {
+    "id": "walkability_intersection",
+    "question": "控江路和本溪路路口有哪些步行环境问题？",
+    "expected_scenario": "walkability",
+    "expected_radius_m": 800,
+    "expected_clarification_needed": false,
+    "expected_tools": ["geocode_tool", "isochrone_tool", "intersection_tool", "policy_rag_tool"],
+    "expected_place_contains": ["控江路和本溪路路口"]
+  },
+  {
+    "id": "life_circle_pingliang",
+    "question": "杨浦区平凉路社区15分钟生活圈设施是否完善？",
+    "expected_scenario": "life_circle",
+    "expected_radius_m": 800,
+    "expected_clarification_needed": false,
+    "expected_tools": ["geocode_tool", "poi_query_tool", "facility_gap_tool", "policy_rag_tool"],
+    "expected_place_contains": ["平凉路社区"]
+  },
+  {
+    "id": "streetview_siping",
+    "question": "从街景看，四平路这段人行环境有什么问题？",
+    "expected_scenario": "walkability",
+    "expected_radius_m": 800,
+    "expected_clarification_needed": false,
+    "expected_tools": ["geocode_tool", "isochrone_tool", "intersection_tool", "streetview_tool", "policy_rag_tool"],
+    "expected_place_contains": ["四平路"]
+  },
+  {
+    "id": "missing_place",
+    "question": "帮我看看附近设施怎么样",
+    "expected_scenario": "general",
+    "expected_radius_m": 800,
+    "expected_clarification_needed": true,
+    "expected_clarification_reason": "missing_place",
+    "expected_tools": ["poi_query_tool", "facility_gap_tool"],
+    "expected_place_contains": []
+  },
+  {
+    "id": "context_followup",
+    "question": "那附近有没有适合老人休息的空间？",
+    "expected_scenario": "elderly_friendly",
+    "expected_radius_m": 800,
+    "expected_clarification_needed": false,
+    "expected_tools": ["geocode_tool", "poi_query_tool", "facility_gap_tool", "policy_rag_tool"],
+    "expected_place_contains": []
+  },
+  {
+    "id": "out_of_scope",
+    "question": "请分析浦东新区某小区周边的生活圈设施",
+    "expected_scenario": "life_circle",
+    "expected_radius_m": 800,
+    "expected_clarification_needed": true,
+    "expected_clarification_reason": "out_of_scope",
+    "expected_tools": ["geocode_tool", "poi_query_tool", "facility_gap_tool", "policy_rag_tool"],
+    "expected_place_contains": []
+  }
+]
