@@ -1,191 +1,173 @@
 # UrbanRenewal Planner Autonomous Agent
 
-> 面向上海市杨浦区城市更新场景的自主规划 AI Agent。它可以理解用户问题、主动澄清缺失信息、自主选择工具、检索空间与政策证据，并生成可解释的规划诊断和更新建议。
-
-[![Python](https://img.shields.io/badge/Python-3.12%2B-blue)](https://www.python.org/)
-[![LangGraph](https://img.shields.io/badge/LangGraph-1.2.0-green)](https://github.com/langchain-ai/langgraph)
-[![FastAPI](https://img.shields.io/badge/FastAPI-enabled-009688)](https://fastapi.tiangolo.com/)
-[![Streamlit](https://img.shields.io/badge/Streamlit-enabled-ff4b4b)](https://streamlit.io/)
+面向上海市杨浦区城市更新场景的自主 AI Agent。项目支持自然语言提问、任务预规划、信息澄清、工具调用、空间分析、政策 RAG、结构化报告、Streamlit 页面和 FastAPI 服务。
 
 ## 项目简介
 
-UrbanRenewal Planner 是一个城市更新垂直领域 AI Agent。当前版本聚焦上海市杨浦区，面向社区更新、15 分钟生活圈、老年友好、步行环境和政策依据检索等场景。
+UrbanRenewal Planner 聚焦上海市杨浦区的城市更新分析场景，适用于社区更新、15 分钟生活圈、老年友好、步行环境、设施短板和政策依据检索等问题。
 
-它不是固定流程问答机器人，而是一个自主 Agent：模型会根据用户问题判断下一步需要什么信息，并选择合适工具完成任务。例如用户只说“那附近有没有养老设施？”时，Agent 可以通过会话记忆理解“那附近”指上一轮讨论的地点。
-
-典型问题：
-
-- 请分析鞍山新村周边 800 米的老年友好问题
-- 控江路和本溪路路口有哪些步行环境问题？
-- 杨浦区平凉路社区 15 分钟生活圈设施是否完善？
-- 从街景看，四平路这段人行环境有什么问题？
-- 刚才那个地方附近有没有适合老人休息的空间？
-
-当前数据范围：**上海市杨浦区**。
-
-## 核心能力
-
-- **自主任务规划**：基于 LangGraph ReAct/tool-calling loop，自主决定是否需要地理编码、POI、路网、街景或政策 RAG。
-- **多轮对话记忆**：通过 `thread_id` 和 LangGraph checkpointer 维持会话上下文，支持地点继承和连续追问。
-- **澄清机制**：地点缺失、地点模糊、问题过宽或超出数据范围时，优先向用户追问或说明限制。
-- **统一工具注册表**：`src/urbanrenewal/tools/registry.py` 将专业工具包装为 LLM 可调用工具，并统一返回 `ok/data/summary/error/source/cost_hint`。
-- **地理编码**：调用高德地图 API，将地名解析为坐标，并完成 GCJ-02 到 WGS84 转换。
-- **POI 与设施缺口诊断**：基于杨浦区 POI 数据进行 buffer 查询，并按老年友好、生活圈、步行环境等场景诊断设施短板。
-- **路网分析**：基于 NetworkX/OSMnx 路网数据计算步行等时圈、主要路口和可达性。
-- **街景多模态分析**：按需调用 Qwen-VL 分析街景图像，使用本地缓存避免重复分析。
-- **政策 RAG**：基于 ChromaDB 和 DashScope embedding 检索政策 PDF 片段，为建议提供依据。
-- **产品入口**：支持 CLI、Streamlit UI 和 FastAPI API。
-
-## 当前架构
+用户可以直接提出自然语言问题，例如：
 
 ```text
-用户问题
-  │
-  ├── CLI: main.py
-  ├── Web UI: app.py
-  └── API: src/urbanrenewal/api/main.py
-      │
-      ▼
-Autonomous Agent
-src/urbanrenewal/agent/autonomous.py
-      │
-      ▼
-ReAct / Tool Calling Loop
-      │
-      ├── geocode_tool
-      ├── poi_query_tool
-      ├── facility_gap_tool
-      ├── isochrone_tool
-      ├── intersection_tool
-      ├── streetview_tool
-      ├── policy_rag_tool
-      └── report_generation_tool
-      │
-      ▼
-结构化 Markdown 诊断与规划建议
+请分析鞍山新村周边800米的老年友好问题
+控江路和本溪路路口有哪些步行环境问题？
+杨浦区平凉路社区15分钟生活圈设施是否完善？
+刚才那个地方附近有没有适合老人休息的空间？
 ```
+
+当前数据范围：上海市杨浦区。
+
+## 已实现能力
+
+- 自主 Agent：基于 LangGraph ReAct/tool-calling，让模型根据问题自主选择工具。
+- 任务预规划：进入 Agent 前先识别地点、场景、半径、上下文指代和是否需要澄清。
+- 澄清机制：地点缺失、地点不清、超出数据范围时优先追问或说明限制。
+- 会话记忆：支持 `thread_id`，并通过 SQLite checkpointer 保存 LangGraph 会话状态。
+- API 会话上下文：FastAPI 保存最近对话轮次，并把上下文注入下一轮 Agent 调用。
+- 工具注册表：统一封装地理编码、POI、设施缺口、路网、街景、政策 RAG 和报告生成工具。
+- 结构化报告：返回 Markdown 答案，同时生成 `PlanningReport`，用于前端展示问题、建议、政策依据、空间证据和地图图层。
+- 成本边界：按用户等级定义 `AgentBudget`，限制递归轮数、工具调用、街景图片数、政策查询数和分析半径。
+- 缓存：提供 TTL cache，并用于地理编码和政策 RAG 等重复查询场景。
+- 服务层：提供同步、流式、异步 Agent API，以及会话、反馈、任务状态和健康检查接口。
 
 ## 技术栈
 
-| 层次 | 技术 |
+| 模块 | 技术 |
 |---|---|
-| Agent 编排 | LangGraph ReAct agent |
-| LLM / VL | 阿里云 DashScope OpenAI-compatible Qwen / Qwen-VL |
-| 工具封装 | LangChain tools + Pydantic schema |
-| 向量检索 | ChromaDB + text-embedding-v4 |
-| 空间分析 | GeoPandas + Shapely + NetworkX + OSMnx |
-| 地理编码 | 高德地图 REST API |
-| Web UI | Streamlit |
+| Agent 编排 | LangGraph, LangChain |
+| LLM / 多模态 | DashScope OpenAI-compatible Qwen / Qwen-VL |
+| 工具 Schema | Pydantic |
 | API | FastAPI |
-| 配置 | YAML + `.env` |
+| Web UI | Streamlit, Folium |
+| RAG | ChromaDB, DashScope text-embedding-v4 |
+| 空间分析 | GeoPandas, Shapely, NetworkX, OSMnx |
+| 存储 | SQLite, 本地文件缓存 |
+| 测试 | pytest, ruff |
 
 ## 项目结构
 
 ```text
-UrbanRenewal-Planner/
-├── app.py                              # Streamlit 自主 Agent 对话界面
-├── main.py                             # CLI 主入口，默认调用自主 Agent
-├── config/
-│   └── project.yaml                    # 本地数据路径、RAG 参数、场景配置
+UrbanReneweral-Planner/
+├── README.md
+├── pyproject.toml
+├── uv.lock
+├── .env.example
+├── project.example.yaml
+├── app.py
+├── main.py
+├── eval/
+│   └── golden_questions.json
+├── scripts/
+│   ├── build_rag.py
+│   ├── eval_task_planner.py
+│   ├── ocr_scanned_pdfs.py
+│   ├── run_agent_smoke.py
+│   └── test_rag.py
 ├── src/
 │   └── urbanrenewal/
 │       ├── agent/
-│       │   ├── autonomous.py           # 自主 Agent 主实现
-│       │   ├── llm.py                  # 共享 LLM 工厂
-│       │   └── planner.py              # 旧固定 workflow，后续可移除
+│       │   ├── autonomous.py
+│       │   ├── budget.py
+│       │   ├── checkpoint.py
+│       │   ├── llm.py
+│       │   ├── plan.py
+│       │   ├── planner.py
+│       │   └── report.py
 │       ├── api/
-│       │   ├── main.py                 # FastAPI 服务
-│       │   └── schemas.py              # API 请求/响应模型
+│       │   ├── main.py
+│       │   ├── observability.py
+│       │   ├── rate_limit.py
+│       │   ├── schemas.py
+│       │   ├── store.py
+│       │   ├── task_models.py
+│       │   ├── task_store.py
+│       │   └── tasks.py
 │       ├── config/
-│       │   └── settings.py             # 配置读取
+│       │   └── settings.py
 │       ├── rag/
-│       │   └── build_policy_rag.py     # 政策 PDF 向量库构建
-│       └── tools/
-│           ├── registry.py             # LLM 可调用工具注册表
-│           ├── geocode.py
-│           ├── poi_query.py
-│           ├── road_query.py
-│           ├── streetview_query.py
-│           └── policy_rag.py
-├── scripts/
-│   ├── build_rag.py
-│   ├── run_agent_smoke.py              # 自主 Agent CLI smoke test
-│   ├── test_rag.py
-│   └── ocr_scanned_pdfs.py
+│       │   └── build_policy_rag.py
+│       ├── tools/
+│       │   ├── geocode.py
+│       │   ├── poi_query.py
+│       │   ├── policy_rag.py
+│       │   ├── registry.py
+│       │   ├── road_query.py
+│       │   └── streetview_query.py
+│       └── utils/
+│           └── ttl_cache.py
 └── tests/
+    ├── conftest.py
     └── unit/
 ```
 
-## 数据依赖
+说明：
 
-数据文件不提交到代码仓库。请在 `config/project.yaml` 中配置本地路径。
+- `app.py` 是 Streamlit 页面入口。
+- `main.py` 是命令行入口。
+- `src/urbanrenewal/api/main.py` 是 FastAPI 服务入口。
+- `src/urbanrenewal/agent/planner.py` 是早期固定 workflow 实现，当前产品入口使用 `autonomous.py`。
+- `notebooks/`、`docs/`、`outputs/`、本地配置和缓存文件不会上传到公开仓库。
 
-| 数据 | 用途 |
-|---|---|
-| `poi_yangpu_clean.parquet` | POI 查询和设施缺口诊断 |
-| `walk_bike_network.graphml` | 步行/骑行路网分析 |
-| `image_metadata.parquet` | 街景图片索引 |
-| `image_analysis_cache.parquet` | 街景多模态分析缓存 |
-| 政策 PDF | RAG 原始文档 |
-| ChromaDB policy collection | 政策语义检索 |
+## 配置
 
-## 快速开始
-
-### 1. 安装依赖
-
-```bash
-uv sync
-```
-
-或：
-
-```bash
-pip install -e .
-```
-
-### 2. 配置环境变量
-
-复制示例文件：
+复制环境变量示例：
 
 ```bash
 cp .env.example .env
 ```
 
-填写：
+填写 `.env`：
 
 ```env
-DASHSCOPE_API_KEY=your_dashscope_api_key
+DASHSCOPE_API_KEY=your_dashscope_api_key_here
 DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-MODEL=qwen-plus
-VISION_MODEL=qwen-vl-plus
-AMAP_API_KEY=your_amap_api_key
+MODEL=qwen3.5-omni-plus
+VISION_MODEL=qwen3.5-omni-plus
+FAST_MODEL=qwen3.5-omni-flash
+
+AMAP_API_KEY=your_amap_api_key_here
+AMAP_BASE_URL=https://restapi.amap.com
 ```
 
-### 3. 配置数据路径
-
-复制并修改：
+复制项目配置示例：
 
 ```bash
 cp project.example.yaml config/project.yaml
 ```
 
-根据本机数据位置修改 `paths`。
+根据本机数据位置修改 `config/project.yaml` 中的 `paths`。真实 `.env` 和 `config/project.yaml` 已被 `.gitignore` 忽略。
 
-### 4. 构建政策 RAG
+## 数据依赖
+
+数据文件不随代码仓库上传，需要本地准备并在 `config/project.yaml` 中配置路径。
+
+| 数据 | 用途 |
+|---|---|
+| POI parquet | 周边设施查询和设施缺口诊断 |
+| 路网 graphml/parquet | 步行等时圈、路口和慢行分析 |
+| 街景元数据和图片 | 街景点位筛选和多模态分析 |
+| 政策 PDF | 政策 RAG 原始文档 |
+| ChromaDB policy collection | 政策语义检索 |
+
+## 安装
+
+推荐使用 uv：
 
 ```bash
-uv run python scripts/build_rag.py
+uv sync
 ```
 
-强制重建：
+或使用 pip：
 
 ```bash
-uv run python scripts/build_rag.py --rebuild
+pip install -e .
 ```
 
-### 5. 运行自主 Agent
+## 运行
 
-CLI 交互：
+### CLI
+
+交互模式：
 
 ```bash
 uv run python main.py
@@ -203,13 +185,13 @@ uv run python main.py "请分析鞍山新村周边800米的老年友好问题"
 uv run python scripts/run_agent_smoke.py -q "控江路和本溪路路口有哪些步行环境问题？"
 ```
 
-Streamlit UI：
+### Streamlit
 
 ```bash
 uv run streamlit run app.py
 ```
 
-FastAPI：
+### FastAPI
 
 ```bash
 uv run uvicorn src.urbanrenewal.api.main:app --reload
@@ -221,7 +203,28 @@ uv run uvicorn src.urbanrenewal.api.main:app --reload
 curl http://127.0.0.1:8000/api/v1/health
 ```
 
-## Python 调用示例
+同步聊天接口：
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -d "{\"question\":\"请分析鞍山新村周边800米的老年友好问题\",\"session_id\":\"demo\"}"
+```
+
+## API 接口
+
+| 接口 | 方法 | 用途 |
+|---|---|---|
+| `/api/v1/health` | GET | 健康检查 |
+| `/api/v1/chat` | POST | 同步 Agent 调用 |
+| `/api/v1/chat/stream` | POST | NDJSON 流式进度 |
+| `/api/v1/chat/async` | POST | 提交后台任务 |
+| `/api/v1/chat/tasks/{task_id}` | GET | 查询异步任务状态 |
+| `/api/v1/sessions/{session_id}` | GET | 查询会话状态 |
+| `/api/v1/feedback` | POST | 提交用户反馈 |
+| `/api/v1/service/status` | GET | 查询服务状态 |
+
+## Python 调用
 
 ```python
 from src.urbanrenewal.agent.autonomous import run_autonomous
@@ -233,19 +236,12 @@ result = run_autonomous(
 
 print(result.answer)
 print(result.tool_events)
+print(result.report)
 ```
 
-## API 示例
+## 工具返回格式
 
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -d "{\"question\":\"请分析鞍山新村周边800米的老年友好问题\",\"session_id\":\"demo\"}"
-```
-
-## 工具返回契约
-
-所有自主 Agent 工具统一返回：
+自主 Agent 工具统一返回：
 
 ```json
 {
@@ -258,56 +254,67 @@ curl -X POST http://127.0.0.1:8000/api/v1/chat \
 }
 ```
 
-这样做的目的：
+这种结构便于 Agent 理解工具结果，也便于 API、前端、日志和测试复用。
 
-- 让 LLM 更稳定地理解工具结果。
-- 让 API 和前端可以复用同一份数据。
-- 让失败结果可解释，而不是直接抛异常。
-- 为后续成本控制和审计打基础。
-
-## 成本控制与安全边界
-
-当前自主 Agent 已内置基础限制：
-
-- 最大空间查询半径：`2000m`
-- 单次街景分析上限：`3` 张
-- 单次政策 RAG 查询上限：`5` 条 query
-- 单条 RAG query 返回上限：`5` 条
-- Agent 最大递归轮次：默认 `18`
-
-后续计划：
-
-- Redis checkpointer，支持跨进程会话记忆。
-- 地理编码缓存。
-- RAG embedding 缓存。
-- 街景分析预算按用户等级控制。
-- 鉴权、限流和调用审计。
-
-## 测试
+## 构建政策 RAG
 
 ```bash
-uv run pytest tests/unit -q
+uv run python scripts/build_rag.py
+```
+
+强制重建：
+
+```bash
+uv run python scripts/build_rag.py --rebuild
+```
+
+RAG 构建会读取 `config/project.yaml` 中的政策 PDF 路径、处理输出路径和 ChromaDB 路径。
+
+## 测试与评估
+
+静态检查：
+
+```bash
 uv run ruff check src tests app.py main.py scripts/run_agent_smoke.py scripts/eval_task_planner.py
 ```
 
-当前基础测试覆盖：
+单元测试：
 
-- 工具注册表契约。
-- API schema。
-- API health endpoint。
+```bash
+uv run pytest tests/unit -q
+```
 
-## 已知限制
+任务规划器评估：
 
-- 当前数据范围仅覆盖上海市杨浦区。
-- 街景图片具有时间滞后，部分现状可能已变化。
-- 当前结果主要是 Markdown + 工具轨迹，地图图层和结构化 `PlanningReport` 仍在后续开发计划中。
-- 当前会话记忆使用内存 checkpointer，进程重启后会丢失。
-- 旧 `planner.py` 固定 workflow 仍保留在代码中，但不再是产品主入口。
+```bash
+uv run python scripts/eval_task_planner.py
+```
 
-## 下一步开发重点
+当前测试覆盖包括：
 
-- 定义严格的 `PlanningReport` 输出结构。
-- 从工具调用结果中提取地图图层、POI、政策证据和建议卡片。
-- Streamlit 重新接入地图展示。
-- API 流式接口返回更细粒度的工具事件。
-- Redis 记忆、缓存和成本预算系统。
+- Agent checkpointer 工厂
+- API schema、健康检查、会话上下文、异步任务
+- 会话和任务 SQLite 存储
+- 请求预算
+- TTL cache
+- 工具注册表返回契约
+- 任务预规划
+- 结构化 `PlanningReport`
+- 结构化日志
+
+## 公开仓库说明
+
+以下内容不会上传到公开仓库：
+
+- `.env`
+- `config/project.yaml`
+- `outputs/`
+- `notebooks/`
+- `docs/`
+- `ROADMAP.md`
+- `claude.md`
+- `.venv/`
+- `.uv-cache/`
+- Python 缓存和测试缓存
+
+公开仓库保留的是项目代码、示例配置、README、测试、评估集和运行脚本。
