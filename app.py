@@ -36,37 +36,70 @@ st.set_page_config(
 st.markdown(
     """
 <style>
-[data-testid="stAppViewContainer"] { background: #0d1117; }
-.stApp { color: #c9d1d9; }
-[data-testid="stSidebar"] { background: #161b22; border-right: 1px solid #30363d; }
-[data-testid="stSidebar"] * { color: #c9d1d9 !important; }
-.app-title { font-size: 1.7rem; font-weight: 700; color: #58a6ff; margin: 0 0 .2rem 0; }
-.app-subtitle { font-size: .9rem; color: #8b949e; margin-bottom: 1rem; }
+[data-testid="stAppViewContainer"] { background: #f6f8fb; }
+.stApp { color: #172033; }
+[data-testid="stHeader"] { background: rgba(246, 248, 251, .92); }
+[data-testid="stSidebar"] { background: #eef3f8; border-right: 1px solid #d7dee8; }
+[data-testid="stSidebar"] * { color: #172033 !important; }
+.app-title { font-size: 1.75rem; font-weight: 750; color: #173b57; margin: 0 0 .2rem 0; letter-spacing: 0; }
+.app-subtitle { font-size: .94rem; color: #526173; margin-bottom: 1rem; }
+.stMarkdown, .stMarkdown p, .stMarkdown li, .stCaption, label { color: #172033; }
+.stChatMessage {
+    background: #ffffff;
+    border: 1px solid #dfe6ef;
+    border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(20, 35, 55, .04);
+}
+[data-testid="stChatInput"] textarea {
+    color: #172033 !important;
+    background: #ffffff !important;
+    border: 1px solid #c9d4e2 !important;
+}
+[data-testid="stChatInput"] textarea::placeholder { color: #64748b !important; opacity: 1; }
+.stButton > button {
+    background: #ffffff;
+    color: #173b57;
+    border: 1px solid #c9d4e2;
+    border-radius: 8px;
+    font-weight: 600;
+}
+.stButton > button:hover {
+    border-color: #2f6f9f;
+    color: #0f4f78;
+    background: #f4f9fc;
+}
 .tool-card {
-    border: 1px solid #30363d;
-    background: #161b22;
+    border: 1px solid #d9e2ec;
+    background: #ffffff;
     border-radius: 8px;
     padding: .55rem .7rem;
     margin: .35rem 0;
 }
-.tool-name { color: #79c0ff; font-weight: 600; font-size: .86rem; }
-.tool-status { color: #8b949e; font-size: .76rem; margin-left: .35rem; }
-.tool-summary { color: #c9d1d9; font-size: .82rem; margin-top: .25rem; }
-.section-title { color: #e6edf3; font-size: 1.05rem; font-weight: 700; margin: .7rem 0 .35rem 0; }
+.tool-name { color: #0f5f8f; font-weight: 650; font-size: .86rem; }
+.tool-status { color: #64748b; font-size: .76rem; margin-left: .35rem; }
+.tool-summary { color: #263548; font-size: .82rem; margin-top: .25rem; }
+.section-title { color: #173b57; font-size: 1.05rem; font-weight: 750; margin: .7rem 0 .35rem 0; }
 .result-card {
-    border: 1px solid #30363d;
-    background: #161b22;
+    border: 1px solid #d9e2ec;
+    background: #ffffff;
     border-radius: 8px;
     padding: .7rem .85rem;
     margin: .45rem 0;
+    box-shadow: 0 1px 2px rgba(20, 35, 55, .04);
 }
-.card-title { color: #e6edf3; font-weight: 650; font-size: .92rem; }
-.card-meta { color: #8b949e; font-size: .76rem; margin-top: .15rem; }
-.card-body { color: #c9d1d9; font-size: .84rem; margin-top: .35rem; line-height: 1.55; }
-.priority-high { color: #ff7b72; }
-.priority-medium { color: #e3b341; }
-.priority-low { color: #56d364; }
-.priority-unknown { color: #8b949e; }
+.card-title { color: #172033; font-weight: 700; font-size: .92rem; }
+.card-meta { color: #64748b; font-size: .76rem; margin-top: .15rem; }
+.card-body { color: #263548; font-size: .84rem; margin-top: .35rem; line-height: 1.55; }
+.priority-high { color: #b42318; font-weight: 650; }
+.priority-medium { color: #93640b; font-weight: 650; }
+.priority-low { color: #087443; font-weight: 650; }
+.priority-unknown { color: #64748b; font-weight: 650; }
+[data-testid="stMetricValue"], [data-testid="stMetricLabel"] { color: #172033 !important; }
+[data-testid="stExpander"] {
+    background: #ffffff;
+    border: 1px solid #dfe6ef;
+    border-radius: 8px;
+}
 #MainMenu, footer { visibility: hidden; }
 </style>
 """,
@@ -306,10 +339,10 @@ st.markdown(
 )
 
 examples = [
+    "你能干什么，详细介绍一下你自己",
     "请分析鞍山新村周边800米的老年友好问题",
     "控江路和本溪路路口有哪些步行环境问题？",
     "杨浦区平凉路社区15分钟生活圈设施是否完善？",
-    "从街景看，四平路这段人行环境有什么问题？",
 ]
 
 if not st.session_state.messages:

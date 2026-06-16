@@ -8,10 +8,43 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 Scenario = Literal["elderly_friendly", "life_circle", "walkability", "general"]
+InteractionType = Literal["spatial_analysis", "capability_help", "general_chat"]
 
 _CONTEXT_REF_PATTERNS = ("刚才", "上次", "前面", "那里", "那边", "那附近", "这个地方", "该区域")
 _OUT_OF_SCOPE_HINTS = ("浦东", "徐汇", "静安", "黄浦", "长宁", "普陀", "虹口", "闵行", "宝山", "松江", "北京", "深圳")
 _PLACE_SUFFIXES = ("新村", "小区", "社区", "路", "街", "医院", "公园", "广场", "学校", "菜场", "地铁站", "路口")
+_CAPABILITY_PATTERNS = (
+    "你能干什么",
+    "你可以做什么",
+    "你会做什么",
+    "介绍一下你自己",
+    "介绍下你自己",
+    "你是谁",
+    "你的功能",
+    "使用说明",
+    "怎么使用",
+    "帮助",
+)
+_GENERAL_CHAT_PATTERNS = ("你好", "您好", "hello", "hi", "谢谢", "感谢")
+_ANALYSIS_INTENT_PATTERNS = (
+    "分析",
+    "评估",
+    "诊断",
+    "看看",
+    "查询",
+    "周边",
+    "附近",
+    "设施",
+    "生活圈",
+    "老年",
+    "养老",
+    "适老",
+    "步行",
+    "街景",
+    "政策",
+    "规划建议",
+    "更新建议",
+)
 
 
 class ClarificationDecision(BaseModel):
@@ -22,6 +55,7 @@ class ClarificationDecision(BaseModel):
 
 class TaskPlan(BaseModel):
     question: str
+    interaction_type: InteractionType = "spatial_analysis"
     scenario: Scenario = "general"
     radius_m: int = 800
     places: list[str] = Field(default_factory=list)
@@ -39,6 +73,15 @@ def _detect_scenario(question: str) -> Scenario:
     if any(keyword in question for keyword in ("步行", "慢行", "人行", "过街", "路口", "街道环境", "骑行")):
         return "walkability"
     return "general"
+
+
+def _detect_interaction_type(question: str) -> InteractionType:
+    lowered = question.lower()
+    if any(pattern in question for pattern in _CAPABILITY_PATTERNS):
+        return "capability_help"
+    if any(pattern in lowered for pattern in _GENERAL_CHAT_PATTERNS):
+        return "general_chat"
+    return "spatial_analysis"
 
 
 def _detect_radius(question: str) -> int:
@@ -90,6 +133,7 @@ def _suggest_tools(question: str, scenario: Scenario, places: list[str], has_con
 def plan_task(question: str) -> TaskPlan:
     """Create a deterministic first-pass task plan for UX, safety, and tests."""
     stripped = question.strip()
+    interaction_type = _detect_interaction_type(stripped)
     scenario = _detect_scenario(stripped)
     radius_m = _detect_radius(stripped)
     places = _extract_places(stripped)
@@ -97,13 +141,20 @@ def plan_task(question: str) -> TaskPlan:
     suggested_tools = _suggest_tools(stripped, scenario, places, has_context_reference)
 
     clarification = ClarificationDecision()
-    if any(hint in stripped for hint in _OUT_OF_SCOPE_HINTS):
+    looks_like_spatial_task = (
+        interaction_type == "spatial_analysis"
+        and (scenario != "general" or places or has_context_reference or any(pattern in stripped for pattern in _ANALYSIS_INTENT_PATTERNS))
+    )
+
+    if interaction_type != "spatial_analysis":
+        clarification = ClarificationDecision()
+    elif any(hint in stripped for hint in _OUT_OF_SCOPE_HINTS):
         clarification = ClarificationDecision(
             needed=True,
             reason="out_of_scope",
             question="当前数据主要覆盖上海市杨浦区。请确认你希望分析杨浦区内的哪个地点，或说明是否只是做方法讨论。",
         )
-    elif not places and not has_context_reference:
+    elif looks_like_spatial_task and not places and not has_context_reference:
         clarification = ClarificationDecision(
             needed=True,
             reason="missing_place",
@@ -117,6 +168,7 @@ def plan_task(question: str) -> TaskPlan:
         )
 
     reasoning_parts = [
+        f"交互类型={interaction_type}",
         f"场景={scenario}",
         f"半径={radius_m}m",
         f"地点={places or '未显式识别'}",
@@ -126,6 +178,7 @@ def plan_task(question: str) -> TaskPlan:
 
     return TaskPlan(
         question=stripped,
+        interaction_type=interaction_type,
         scenario=scenario,
         radius_m=radius_m,
         places=places,

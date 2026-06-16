@@ -50,6 +50,21 @@ SYSTEM_PROMPT = f"""你是 UrbanRenewal Planner，一个面向公众和专业人
 DEFAULT_RECURSION_LIMIT = 18
 
 
+CAPABILITY_HELP_ANSWER = """我是 UrbanRenewal Planner，一个面向上海市杨浦区城市更新场景的自主 AI Agent。
+
+我可以做几类事情：
+
+1. 城市更新诊断：围绕小区、道路、路口或社区，分析老年友好、15 分钟生活圈、步行环境、公共服务设施等问题。
+2. 自主调用工具：根据问题自动选择地理编码、POI 查询、设施缺口诊断、路网分析、街景分析和政策 RAG 检索。
+3. 多轮对话：你可以先问“请分析鞍山新村周边 800 米的老年友好问题”，再追问“那附近有没有适合老人休息的空间？”。
+4. 证据化回答：我会尽量把空间数据、政策依据和不确定性说明写清楚，而不是只给泛泛建议。
+5. 报告化输出：回答会包含总体诊断、主要问题、空间证据、政策依据、更新建议和优先级。
+
+当前数据范围主要是上海市杨浦区。如果你想开始分析，可以直接告诉我地点和问题，例如：“请分析控江路和本溪路路口的步行环境问题”。"""
+
+GENERAL_CHAT_ANSWER = "你好，我是 UrbanRenewal Planner。你可以问我杨浦区某个小区、道路或路口的城市更新问题，也可以先问我能做什么。"
+
+
 @dataclass
 class AutonomousRunResult:
     """Serializable wrapper returned by convenience runner functions."""
@@ -167,6 +182,18 @@ def run_autonomous(
     effective_budget = budget or budget_for_tier("registered")
     effective_recursion_limit = recursion_limit or effective_budget.recursion_limit or DEFAULT_RECURSION_LIMIT
     task_plan = plan_task(question)
+    if task_plan.interaction_type in {"capability_help", "general_chat"}:
+        answer = CAPABILITY_HELP_ANSWER if task_plan.interaction_type == "capability_help" else GENERAL_CHAT_ANSWER
+        return AutonomousRunResult(
+            session_id=session_id,
+            answer=answer,
+            messages=[HumanMessage(content=question), AIMessage(content=answer)],
+            tool_events=[],
+            report=build_planning_report(answer, []),
+            budget=effective_budget,
+            task_plan=task_plan,
+            raw_state={"messages": []},
+        )
     can_use_persistent_context = bool(conversation_context.strip()) and task_plan.clarification.reason == "missing_place"
     if task_plan.clarification.needed and not can_use_persistent_context:
         answer = task_plan.clarification.question
@@ -222,6 +249,17 @@ def stream_autonomous(
     effective_budget = budget or budget_for_tier("registered")
     effective_recursion_limit = recursion_limit or effective_budget.recursion_limit or DEFAULT_RECURSION_LIMIT
     task_plan = plan_task(question)
+    if task_plan.interaction_type in {"capability_help", "general_chat"}:
+        answer = CAPABILITY_HELP_ANSWER if task_plan.interaction_type == "capability_help" else GENERAL_CHAT_ANSWER
+        yield {
+            "session_id": session_id,
+            "event": {
+                "type": task_plan.interaction_type,
+                "task_plan": task_plan.model_dump(mode="json"),
+                "message": answer,
+            },
+        }
+        return
     can_use_persistent_context = bool(conversation_context.strip()) and task_plan.clarification.reason == "missing_place"
     if task_plan.clarification.needed and not can_use_persistent_context:
         yield {
